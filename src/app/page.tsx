@@ -25,13 +25,8 @@ const getHydratedSnapshot = () => true;
 const getServerHydratedSnapshot = () => false;
 
 export default function Home() {
-  const initialSession = loadSession();
-  const [messages, setMessages] = useState<Message[]>(
-    initialSession?.messages ?? [],
-  );
-  const [usage, setUsage] = useState<SessionUsage>(
-    initialSession?.usage ?? EMPTY_SESSION,
-  );
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [usage, setUsage] = useState<SessionUsage>(EMPTY_SESSION);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -43,20 +38,17 @@ export default function Home() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Cargar el historial desde localStorage al montar (solo cliente).
-  // Este efecto se ejecuta cuando el componente ya hidrató: lee la sesión
-  // guardada y, si el estado del chat está vacío, restaura mensajes y uso.
-  // La lectura de localStorage es un sistema externo y solo puede hacerse
-  // en el cliente, por lo que la hidratación ocurre primero.
+  // El estado arranca vacío a propósito: así el HTML del servidor y el del
+  // primer render del cliente coinciden y NO hay error de hidratación. Esta
+  // lectura de localStorage ocurre después, ya en el navegador.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!hydrated) return;
     const stored = loadSession();
     if (!stored) return;
 
-    setMessages((prev) => (prev.length === 0 ? stored.messages : prev));
-    setUsage((prev) =>
-      prev.requests === 0 && prev.totalTokens === 0 ? stored.usage : prev,
-    );
+    setMessages(stored.messages);
+    setUsage(stored.usage);
   }, [hydrated]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -182,7 +174,13 @@ export default function Home() {
         {/* Columna del chat */}
         <main className="flex min-w-0 flex-1 flex-col rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
           <section className="flex-1 space-y-4 overflow-y-auto p-5">
-            {messages.length === 0 && (
+            {!hydrated && (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                Cargando conversación…
+              </p>
+            )}
+
+            {hydrated && messages.length === 0 && (
               <p className="text-sm text-zinc-500 dark:text-zinc-400">
                 Escribe un mensaje para empezar. La conversación y las métricas
                 se guardan en tu navegador.
