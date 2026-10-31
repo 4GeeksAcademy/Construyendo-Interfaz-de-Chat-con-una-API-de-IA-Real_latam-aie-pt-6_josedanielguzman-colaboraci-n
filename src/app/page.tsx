@@ -1,6 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import {
+  FormEvent,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   addUsage,
   clearSession,
@@ -14,24 +20,27 @@ import {
   Usage,
 } from "@/lib/chat";
 
+const subscribeToHydration = () => () => {};
+const getHydratedSnapshot = () => true;
+const getServerHydratedSnapshot = () => false;
+
 export default function Home() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [usage, setUsage] = useState<SessionUsage>(EMPTY_SESSION);
+  const initialSession = loadSession();
+  const [messages, setMessages] = useState<Message[]>(
+    initialSession?.messages ?? [],
+  );
+  const [usage, setUsage] = useState<SessionUsage>(
+    initialSession?.usage ?? EMPTY_SESSION,
+  );
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [hydrated, setHydrated] = useState(false);
+  const hydrated = useSyncExternalStore(
+    subscribeToHydration,
+    getHydratedSnapshot,
+    getServerHydratedSnapshot,
+  );
   const bottomRef = useRef<HTMLDivElement>(null);
-
-  // Cargar sesión guardada al montar (solo cliente)
-  useEffect(() => {
-    const stored = loadSession();
-    if (stored) {
-      setMessages(stored.messages);
-      setUsage(stored.usage);
-    }
-    setHydrated(true);
-  }, []);
 
   // Guardar en localStorage tras cambios (solo si ya hidrató)
   useEffect(() => {
@@ -244,3 +253,4 @@ export default function Home() {
     </div>
   );
 }
+
