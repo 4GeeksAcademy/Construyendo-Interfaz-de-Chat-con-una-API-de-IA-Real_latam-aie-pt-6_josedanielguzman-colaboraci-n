@@ -42,6 +42,24 @@ export default function Home() {
   );
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Cargar el historial desde localStorage al montar (solo cliente).
+  // Este efecto se ejecuta cuando el componente ya hidrató: lee la sesión
+  // guardada y, si el estado del chat está vacío, restaura mensajes y uso.
+  // La lectura de localStorage es un sistema externo y solo puede hacerse
+  // en el cliente, por lo que la hidratación ocurre primero.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!hydrated) return;
+    const stored = loadSession();
+    if (!stored) return;
+
+    setMessages((prev) => (prev.length === 0 ? stored.messages : prev));
+    setUsage((prev) =>
+      prev.requests === 0 && prev.totalTokens === 0 ? stored.usage : prev,
+    );
+  }, [hydrated]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   // Guardar en localStorage tras cambios (solo si ya hidrató)
   useEffect(() => {
     if (!hydrated) return;
@@ -75,20 +93,55 @@ export default function Home() {
         body: JSON.stringify({ messages: updatedMessages }),
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Ocurrió un error.");
+      // Leemos como texto: una respuesta vacía (500 sin cuerpo, 204, reinicio
+      // del servidor) no debe romper el parseo con un error técnico.
+      const raw = await response.text();
+      let data: { error?: string; reply?: string; usage?: Usage | null } = {};
+
+      if (raw) {
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          throw new Error(
+            `El servidor devolvió una respuesta no válida (HTTP ${response.status}). Inténtalo de nuevo.`,
+          );
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ??
+            `El servidor respondió con el código ${response.status}. Inténtalo de nuevo.`,
+        );
+      }
+
+      if (!raw) {
+        throw new Error(
+          "El servidor devolvió una respuesta vacía. Inténtalo de nuevo.",
+        );
+      }
+
+      if (typeof data.reply !== "string" || data.reply.length === 0) {
+        throw new Error("La respuesta no contiene texto. Inténtalo de nuevo.");
+      }
 
       setMessages([
         ...updatedMessages,
         { role: "assistant", content: data.reply },
       ]);
 
-      const serverUsage = data.usage as Usage | null;
+      const serverUsage = data.usage ?? null;
       if (serverUsage) setUsage((prev) => addUsage(prev, serverUsage));
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "No se pudo enviar el mensaje.",
-      );
+      if (err instanceof TypeError) {
+        setError(
+          "No se pudo contactar con el servidor. Comprueba tu conexión e inténtalo de nuevo.",
+        );
+      } else {
+        setError(
+          err instanceof Error ? err.message : "No se pudo enviar el mensaje.",
+        );
+      }
     } finally {
       setLoading(false);
     }

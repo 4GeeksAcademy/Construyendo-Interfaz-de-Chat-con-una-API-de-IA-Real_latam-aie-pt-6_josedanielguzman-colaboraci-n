@@ -61,11 +61,30 @@ export async function POST(request: Request) {
       },
     );
 
-    const result = await groqResponse.json();
+    // Groq puede devolver un cuerpo vacío o no-JSON (por ejemplo, un 502 de
+    // su pasarela). Parseamos de forma defensiva para no propagar un error.
+    const raw = await groqResponse.text();
+    let result: {
+      error?: { message?: string };
+      choices?: { message?: { content?: unknown } }[];
+      usage?: unknown;
+    } | null = null;
+
+    if (raw) {
+      try {
+        result = JSON.parse(raw);
+      } catch {
+        result = null;
+      }
+    }
 
     if (!groqResponse.ok) {
       return Response.json(
-        { error: result?.error?.message ?? "Groq rechazó la solicitud." },
+        {
+          error:
+            result?.error?.message ??
+            `Groq rechazó la solicitud (HTTP ${groqResponse.status}).`,
+        },
         { status: groqResponse.status },
       );
     }

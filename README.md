@@ -1,36 +1,128 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Habla con la Máquina — Interfaz de Chat con una API de IA real
 
-## Getting Started
+Prototipo de interfaz de chat en **React / Next.js (App Router)** conectado a la
+API de **Groq**, que mide en tiempo real el consumo de tokens y las métricas de
+sesión, con persistencia en `localStorage`.
 
-First, run the development server:
+## Funcionalidades
+
+- Chat con el modelo `qwen/qwen3.8-27b` de Groq.
+- Historial completo de la conversación, con mensajes del usuario y de la IA
+  visualmente diferenciados.
+- Panel de métricas: tokens de prompt, de completado y totales acumulados,
+  media por petición y coste estimado.
+- Persistencia de la sesión en `localStorage` (sobrevive a una recarga).
+- Botón «Nueva conversación» que limpia el estado y el `localStorage`.
+- Estados de carga y errores legibles para el usuario.
+- La API key **nunca** llega al navegador: solo se usa en la API Route.
+
+## Requisitos
+
+- Node.js 20 o superior.
+- Una cuenta gratuita en [Groq](https://console.groq.com/) y una API key.
+
+## Configuración
+
+1. Copia el archivo de ejemplo y rellena tus valores:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Edita `.env`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```env
+GROQ_API_KEY=tu_api_key_aqui
+GROQ_MODEL=qwen/qwen3.8-27b
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+> **Nota sobre el modelo:** el enunciado del curso indica `qwen/qwen3.6-27b`.
+> Ese modelo ya no está disponible en Groq; se usa `qwen/qwen3.8-27b`, el más
+> parecido disponible en el plan gratuito.
+>
+> **Nota sobre la variable:** se usa `GROQ_API_KEY` (sin prefijo
+> `NEXT_PUBLIC_`) a propósito, para que la clave no se exponga en el bundle del
+> navegador.
 
-## Learn More
+3. Opcional — rate limiting global entre réplicas (recomendado en producción).
+   Crea una base de datos gratuita en [Upstash](https://console.upstash.com) y
+   añade:
 
-To learn more about Next.js, take a look at the following resources:
+```env
+UPSTASH_REDIS_REST_URL=https://tu-instancia.upstash.io
+UPSTASH_REDIS_REST_TOKEN=tu_token
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Sin estas variables la app funciona igual, con un limitador en memoria.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Ejecución
 
-## Deploy on Vercel
+```bash
+npm install
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Abre [http://localhost:3000](http://localhost:3000).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Scripts
+
+```bash
+npm run dev      # Servidor de desarrollo
+npm run build    # Build de producción
+npm start        # Servidor de producción
+npm run lint     # ESLint
+npx tsc --noEmit # Comprobación de tipos
+```
+
+## Estructura
+
+```
+src/
+├── app/
+│   ├── page.tsx              # Interfaz del chat y panel de métricas
+│   └── api/chat/route.ts     # API Route: proxy seguro hacia Groq
+└── lib/
+    └── chat.ts               # Tipos, acumulación de uso, coste y localStorage
+```
+
+## Cómo se cumplen los requisitos del brief
+
+| Requisito | Implementación |
+| --- | --- |
+| Interfaz de chat (campo + botón) | `<form>` con `<input>` y botón «Enviar» en `page.tsx` |
+| API key en variable de entorno | `process.env.GROQ_API_KEY`; `.env` ignorado por Git |
+| `fetch` sin SDK, cabeceras manuales | `Authorization: Bearer` + `Content-Type: application/json` |
+| Historial completo en cada llamada | Se envía el array completo de mensajes |
+| `async/await` | `handleSubmit` con `try/catch/finally` |
+| Indicador de carga | `loading` + «Groq está respondiendo…» |
+| Errores legibles | Parseo defensivo: nunca se muestra un error técnico |
+| `useState` | Mensajes, input, carga, error y métricas |
+| `useEffect` de carga desde `localStorage` | Efecto que llama a `loadSession()` tras hidratar |
+| `useEffect` de guardado | Guarda en `localStorage` tras cada cambio |
+| Tokens de prompt / completado / totales | Desde el objeto `usage`, acumulados con `addUsage()` |
+| Métrica adicional | Modelo, media por petición y coste estimado |
+| Persistencia tras recarga | `saveSession` / `loadSession` |
+| Borrar conversación | Botón «Nueva conversación» |
+
+## Sobre v0.dev
+
+El layout de este proyecto se escribió a mano en JSX + Tailwind, no se generó
+con [v0.dev](https://v0.dev). No es posible automatizar el uso de v0 desde el
+repositorio: es una herramienta web con interfaz conversacional y no expone una
+CLI de generación de proyectos.
+
+Si el curso exige usar v0, el flujo manual es:
+
+1. Entra en <https://v0.dev> e inicia sesión.
+2. Describe la interfaz, por ejemplo:
+   *"una interfaz de chat con un panel de historial de mensajes y una barra
+   lateral con estadísticas de consumo de tokens"*.
+3. Itera con mensajes hasta que el resultado te sirva.
+4. Pulsa el botón **"Add to Codebase"** (o el menú **⋯ → Download ZIP** /
+   **Copy code**).
+5. Pega el componente generado en `src/app/page.tsx` y vuelve a conectar la
+   llamada a `/api/chat`, el estado y la persistencia, **que v0 no genera**.
+
+Como el layout actual ya cumple lo que se evalúa (funcionalidad, no diseño), no
+es necesario reemplazarlo; puedes mencionar en la entrega que se implementó
+directamente en Next.js.
