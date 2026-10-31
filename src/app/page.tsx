@@ -1,28 +1,51 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-
-type Message = {
-  role: "user" | "assistant";
-  content: string;
-};
-
-type Usage = {
-  prompt_tokens?: number;
-  completion_tokens?: number;
-  total_tokens?: number;
-};
+import { FormEvent, useEffect, useRef, useState } from "react";
+import {
+  addUsage,
+  clearSession,
+  EMPTY_SESSION,
+  estimateCost,
+  formatCost,
+  loadSession,
+  Message,
+  saveSession,
+  SessionUsage,
+  Usage,
+} from "@/lib/chat";
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [usage, setUsage] = useState<SessionUsage>(EMPTY_SESSION);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [usage, setUsage] = useState<Usage | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Cargar sesión guardada al montar (solo cliente)
+  useEffect(() => {
+    const stored = loadSession();
+    if (stored) {
+      setMessages(stored.messages);
+      setUsage(stored.usage);
+    }
+    setHydrated(true);
+  }, []);
+
+  // Guardar en localStorage tras cambios (solo si ya hidrató)
+  useEffect(() => {
+    if (!hydrated) return;
+    saveSession({ messages, usage });
+  }, [messages, usage, hydrated]);
+
+  // Scroll automático al último mensaje
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
     const text = input.trim();
     if (!text || loading) return;
 
@@ -44,16 +67,15 @@ export default function Home() {
       });
 
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "Ocurrió un error.");
-      }
+      if (!response.ok) throw new Error(data.error ?? "Ocurrió un error.");
 
       setMessages([
         ...updatedMessages,
         { role: "assistant", content: data.reply },
       ]);
-      if (data.usage) setUsage(data.usage);
+
+      const serverUsage = data.usage as Usage | null;
+      if (serverUsage) setUsage((prev) => addUsage(prev, serverUsage));
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "No se pudo enviar el mensaje.",
@@ -63,53 +85,162 @@ export default function Home() {
     }
   }
 
+  function handleNewConversation() {
+    setMessages([]);
+    setUsage(EMPTY_SESSION);
+    setError("");
+    clearSession();
+  }
+
+  const avgTokens =
+    usage.requests > 0 ? Math.round(usage.totalTokens / usage.requests) : 0;
+  const cost = estimateCost(usage);
+
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-2xl flex-col gap-6 p-6">
-      <h1 className="text-2xl font-bold">Chat con Groq</h1>
-
-      {usage && (
-        <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
-          Tokens → prompt: <strong>{usage.prompt_tokens ?? 0}</strong> ·
-          completion: <strong>{usage.completion_tokens ?? 0}</strong> · total:{" "}
-          <strong>{usage.total_tokens ?? 0}</strong>
-        </p>
-      )}
-
-      <section className="flex flex-1 flex-col gap-3" aria-live="polite">
-        {messages.map((message, index) => (
-          <p
-            key={index}
-            className={`max-w-[85%] whitespace-pre-wrap rounded-xl p-3 ${
-              message.role === "user"
-                ? "self-end bg-blue-600 text-white"
-                : "self-start bg-gray-100 text-gray-900"
-            }`}
+    <div className="flex min-h-screen flex-col bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <header className="border-b border-zinc-200 bg-white px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4">
+          <div>
+            <h1 className="text-lg font-semibold">Chat con Groq</h1>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              qwen/qwen3.8-27b · Next.js App Router
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleNewConversation}
+            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
           >
-            <strong>{message.role === "user" ? "Tú: " : "Asistente: "}</strong>
-            {message.content}
-          </p>
-        ))}
+            Nueva conversación
+          </button>
+        </div>
+      </header>
 
-        {loading && <p className="text-gray-500">Groq está respondiendo…</p>}
-        {error && <p className="text-red-600">{error}</p>}
-      </section>
+      <div className="mx-auto flex w-full max-w-6xl flex-1 gap-6 p-6">
+        {/* Columna del chat */}
+        <main className="flex min-w-0 flex-1 flex-col rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+          <section className="flex-1 space-y-4 overflow-y-auto p-5">
+            {messages.length === 0 && (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                Escribe un mensaje para empezar. La conversación y las métricas
+                se guardan en tu navegador.
+              </p>
+            )}
 
-      <form onSubmit={handleSubmit} className="flex gap-2">
-        <input
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          placeholder="Escribe un mensaje…"
-          className="min-w-0 flex-1 rounded-lg border px-4 py-3"
-          disabled={loading}
-        />
-        <button
-          type="submit"
-          disabled={loading || !input.trim()}
-          className="rounded-lg bg-blue-600 px-4 py-3 text-white disabled:opacity-50"
-        >
-          Enviar
-        </button>
-      </form>
-    </main>
+            {messages.map((message, index) => (
+              <div
+                key={index}
+                className={`flex gap-3 ${
+                  message.role === "user" ? "flex-row-reverse" : "flex-row"
+                }`}
+              >
+                <div
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                    message.role === "user"
+                      ? "bg-blue-600 text-white"
+                      : "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-100"
+                  }`}
+                  aria-hidden="true"
+                >
+                  {message.role === "user" ? "Tú" : "IA"}
+                </div>
+                <p
+                  className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                    message.role === "user"
+                      ? "bg-blue-600 text-white"
+                      : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
+                  }`}
+                >
+                  {message.content}
+                </p>
+              </div>
+            ))}
+
+            {loading && (
+              <p className="pl-11 text-sm text-zinc-500 dark:text-zinc-400">
+                Groq está respondiendo…
+              </p>
+            )}
+
+            {error && (
+              <p className="pl-11 text-sm text-red-600 dark:text-red-400">
+                {error}
+              </p>
+            )}
+
+            <div ref={bottomRef} />
+          </section>
+
+          <form
+            onSubmit={handleSubmit}
+            className="flex gap-2 border-t border-zinc-200 p-4 dark:border-zinc-800"
+          >
+            <input
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder="Escribe un mensaje…"
+              className="min-w-0 flex-1 rounded-lg border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-950"
+              disabled={loading}
+            />
+            <button
+              type="submit"
+              disabled={loading || !input.trim()}
+              className="rounded-lg bg-blue-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Enviar
+            </button>
+          </form>
+        </main>
+
+        {/* Panel de métricas */}
+        <aside className="hidden w-72 shrink-0 lg:block">
+          <div className="sticky top-6 space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              Métricas de sesión
+            </h2>
+
+            <dl className="space-y-3 text-sm">
+              <div className="flex items-center justify-between">
+                <dt className="text-zinc-500 dark:text-zinc-400">Peticiones</dt>
+                <dd className="font-semibold">{usage.requests}</dd>
+              </div>
+              <div className="flex items-center justify-between">
+                <dt className="text-zinc-500 dark:text-zinc-400">
+                  Tokens de entrada
+                </dt>
+                <dd className="font-semibold">{usage.promptTokens}</dd>
+              </div>
+              <div className="flex items-center justify-between">
+                <dt className="text-zinc-500 dark:text-zinc-400">
+                  Tokens de salida
+                </dt>
+                <dd className="font-semibold">{usage.completionTokens}</dd>
+              </div>
+              <div className="flex items-center justify-between border-t border-zinc-200 pt-3 dark:border-zinc-800">
+                <dt className="font-medium">Tokens totales</dt>
+                <dd className="font-bold">{usage.totalTokens}</dd>
+              </div>
+              <div className="flex items-center justify-between">
+                <dt className="text-zinc-500 dark:text-zinc-400">
+                  Media / petición
+                </dt>
+                <dd className="font-semibold">{avgTokens}</dd>
+              </div>
+              <div className="flex items-center justify-between">
+                <dt className="text-zinc-500 dark:text-zinc-400">
+                  Coste estimado
+                </dt>
+                <dd className="font-semibold">{formatCost(cost)}</dd>
+              </div>
+            </dl>
+
+            <p className="border-t border-zinc-200 pt-3 text-xs leading-relaxed text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
+              Los tokens provienen del campo <code>usage</code> de Groq. El coste
+              se estima con $0.80/M entrada y $4.00/M salida.
+            </p>
+          </div>
+        </aside>
+      </div>
+    </div>
   );
 }
