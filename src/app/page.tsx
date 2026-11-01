@@ -174,13 +174,7 @@ export default function Home() {
         {/* Columna del chat */}
         <main className="flex min-w-0 flex-1 flex-col rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
           <section className="flex-1 space-y-4 overflow-y-auto p-5">
-            {!hydrated && (
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                Cargando conversación…
-              </p>
-            )}
-
-            {hydrated && messages.length === 0 && (
+            {messages.length === 0 && (
               <p className="text-sm text-zinc-500 dark:text-zinc-400">
                 Escribe un mensaje para empezar. La conversación y las métricas
                 se guardan en tu navegador.
