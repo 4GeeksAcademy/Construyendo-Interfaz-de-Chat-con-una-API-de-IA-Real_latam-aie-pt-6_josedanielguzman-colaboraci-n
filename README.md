@@ -106,23 +106,10 @@ src/
 
 ## Sobre v0.dev
 
-El layout de este proyecto se escribió a mano en JSX + Tailwind, no se generó
-con [v0.dev](https://v0.dev). No es posible automatizar el uso de v0 desde el
-repositorio: es una herramienta web con interfaz conversacional y no expone una
-CLI de generación de proyectos.
+Inicialmente, el layout de este proyecto se escribió a mano en JSX + Tailwind.
+Al advertir que el proyecto requería generar la interfaz con
+[v0.dev](https://v0.dev), accedí a esa plataforma, generé el diseño y copié e
+integré manualmente el código en este repositorio.
 
-Si el curso exige usar v0, el flujo manual es:
-
-1. Entra en <https://v0.dev> e inicia sesión.
-2. Describe la interfaz, por ejemplo:
-   *"una interfaz de chat con un panel de historial de mensajes y una barra
-   lateral con estadísticas de consumo de tokens"*.
-3. Itera con mensajes hasta que el resultado te sirva.
-4. Pulsa el botón **"Add to Codebase"** (o el menú **⋯ → Download ZIP** /
-   **Copy code**).
-5. Pega el componente generado en `src/app/page.tsx` y vuelve a conectar la
-   llamada a `/api/chat`, el estado y la persistencia, **que v0 no genera**.
-
-Como el layout actual ya cumple lo que se evalúa (funcionalidad, no diseño), no
-es necesario reemplazarlo; puedes mencionar en la entrega que se implementó
-directamente en Next.js.
+El layout definitivo fue generado en v0.dev e integrado en el commit
+`a6c8e81`, titulado `feat: integrar interfaz de chat de Groq`.
